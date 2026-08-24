@@ -1,0 +1,95 @@
+#!/bin/bash
+# Host entry point: builds the Omarchy MX Mac live image root filesystem.
+#
+# Drives a linux/arm64 builder container; the artifact is copied back into
+# ./release. Requires a running Docker daemon (Docker Desktop or colima) whose
+# VM kernel has loop devices and the btrfs module — build-rootfs.sh probes
+# that and explains what to install if it is missing.
+
+set -euo pipefail
+
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+docker_bin="${DOCKER:-docker}"
+image_name=omarchy-mx-mac-iso-builder
+cache_volume=omarchy-mx-mac-iso-cache
+out_name=release
+
+fail() {
+  printf 'Error: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  grep '^#' "$0" | sed -n '2,5s/^# \?//p'
+  printf '\nOptions:\n'
+  printf '  --out DIR   copy the artifact here (default: %s)\n' "$out_name"
+  printf '  --debug     open an interactive shell in the builder container\n'
+  printf '  -h, --help  show this help\n'
+}
+
+while (($#)); do
+  case "$1" in
+    --out)
+      (($# > 1)) || fail "--out requires a directory."
+      out_name=$2
+      shift
+      ;;
+    --debug)
+      debug=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      fail "Unknown option '$1' (see --help)."
+      ;;
+  esac
+  shift
+done
+
+command -v "$docker_bin" >/dev/null 2>&1 ||
+  fail "Docker CLI not found. Install Docker Desktop or colima ('brew install colima && colima start --arch aarch64 --vm-type vz')."
+
+if ! "$docker_bin" info >/dev/null 2>&1; then
+  fail "No Docker daemon is reachable. Start Docker Desktop, or run 'colima start --arch aarch64 --vm-type vz'."
+fi
+
+if [[ $(uname -m) != arm64 ]]; then
+  printf 'Warning: host is not arm64; the build will run under emulation and be slow.\n' >&2
+fi
+
+printf '=> Building the builder image (%s)\n' "$image_name"
+"$docker_bin" build --platform linux/arm64 -f "$repo_root/builder/Containerfile" -t "$image_name" "$repo_root"
+"$docker_bin" volume create "$cache_volume" >/dev/null
+
+container_name="omarchy-mx-mac-iso-build-$$"
+run_args=(
+  run
+  --platform linux/arm64
+  --privileged
+  --name "$container_name"
+  -v "$repo_root:/build"
+  -v "$cache_volume:/cache"
+  -v "$cache_volume:/out"
+)
+
+if [[ ${debug:-0} == 1 ]]; then
+  exec "$docker_bin" -it "${run_args[@]}" "$image_name" /bin/bash
+fi
+
+status=0
+"$docker_bin" "${run_args[@]}" "$image_name" \
+  bash /build/builder/build-rootfs.sh --out /cache/out --size "${OMARCHY_MX_MAC_ISO_SIZE:-16G}" || status=$?
+
+if (( status == 0 )); then
+  mkdir -p "$repo_root/$out_name"
+  for artifact in root.img root.img.sha256; do
+    "$docker_bin" cp "$container_name:/cache/out/$artifact" "$repo_root/$out_name/$artifact"
+  done
+  chown -R "$(id -u):$(id -g)" "$repo_root/$out_name" 2>/dev/null || true
+  printf '=> Artifact copied to %s/\n' "$out_name"
+fi
+
+"$docker_bin" rm -f "$container_name" >/dev/null 2>&1 || true
+exit $status

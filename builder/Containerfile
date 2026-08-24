@@ -1,0 +1,25 @@
+# Builder container for omarchy-mx-mac-iso.
+#
+# The linux/arm64 variant of the official archlinux image is Arch Linux ARM,
+# so pacman here already talks to the [core] [extra] [alarm] [aur] mirrors
+# used by Asahi Alarm users. Run it with --platform linux/arm64 and
+# --privileged: assembling root.img needs loop devices and the btrfs module
+# of the host VM kernel.
+
+FROM docker.io/library/archlinux:base-devel
+
+RUN pacman-key --init && pacman -Syu --noconfirm \
+  arch-install-scripts \
+  btrfs-progs \
+  curl \
+  dosfstools \
+  e2fsprogs \
+  git \
+  gnupg \
+  libarchive \
+  parted \
+  rsync \
+  util-linux
+
+WORKDIR /build
+CMD ["/bin/bash"]
