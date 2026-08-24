@@ -1,0 +1,50 @@
+#
+# Explicit package list for the Omarchy MX Mac root filesystem image.
+#
+# One name per line; '#' starts a comment. Installed from the repositories in
+# configs/pacman.conf. The six signed asahi-quattro bundle packages are NOT
+# listed here: they come from the verified channel release, never from a repo.
+#
+
+# Base userspace
+base
+base-devel
+
+# Kernel, initramfs, boot stack
+linux-asahi
+linux-asahi-headers
+mkinitcpio
+grub
+efibootmgr
+m1n1
+uboot-asahi
+asahi-scripts
+asahi-configs
+asahi-fwextract
+
+# Graphics and audio (Asahi variants where the repos provide them)
+mesa
+asahi-audio
+alsa-ucm-conf-asahi
+alsa-firmware
+speakersafetyd
+pipewire
+pipewire-alsa
+pipewire-pulse
+wireplumber
+
+# Networking: NetworkManager with the iwd backend, as validated on j314s
+networkmanager
+iwd
+
+# Image and installer tooling that must exist in the live payload later;
+# cheap to carry now so S4 does not grow the artifact twice
+btrfs-progs
+dosfstools
+e2fsprogs
+parted
+rsync
+curl
+git
+gum
+sudo
