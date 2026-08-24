@@ -34,6 +34,7 @@ force_host_roles() {
 
 write_report() {
     report=/tmp/omarchy-live-report.txt
+    stamp=$(date +%Y%m%d-%H%M)
     {
         echo "=== omarchy-live diagnostic report ==="
         date
@@ -60,19 +61,30 @@ write_report() {
         dmesg | tail -n 120
     } >"$report" 2>&1
 
-    # The stick's own ESP is a plain FAT32 we are allowed to write: drop the
-    # report there so the next macOS boot can just open it.
-    esp=/dev/disk/by-partlabel/omarchy-mx-esp
-    if [ -e "$esp" ]; then
+    # Preferred target: the stick's own ESP — but when the stick is the thing
+    # that failed, it is as invisible as the payload, so fall through.
+    if [ -e /dev/disk/by-partlabel/omarchy-mx-esp ]; then
         mkdir -p /run/esp
-        if mount -t vfat -o rw "$esp" /run/esp 2>/dev/null; then
-            cp "$report" /run/esp/omarchy-live-report.txt
+        if mount -t vfat -o rw /dev/disk/by-partlabel/omarchy-mx-esp /run/esp 2>/dev/null; then
+            cp "$report" "/run/esp/omarchy-mx-mac-iso-report-$stamp.txt"
             umount /run/esp
-            echo "omarchy-live: report saved to the stick ESP (omarchy-live-report.txt)" >&2
+            echo "omarchy-live: report saved on the stick ESP (omarchy-mx-mac-iso-report-$stamp.txt)" >&2
             return 0
         fi
     fi
-    echo "omarchy-live: report kept in initramfs at $report" >&2
+
+    # The internal System ESP, already mounted read-write by the asahi hook
+    # at /run/.system-efi, is always visible: drop the report in a dedicated
+    # directory. We never touch any of Asahi's boot files there.
+    if [ -d /run/.system-efi ]; then
+        mkdir -p /run/.system-efi/omarchy-mx-mac-iso-reports 2>/dev/null
+        if cp "$report" "/run/.system-efi/omarchy-mx-mac-iso-reports/report-$stamp.txt" 2>/dev/null; then
+            echo "omarchy-live: report saved to the internal ESP (omarchy-mx-mac-iso-reports/report-$stamp.txt)" >&2
+            return 0
+        fi
+    fi
+
+    echo "omarchy-live: report could not be persisted; it is at $report in this shell" >&2
     return 1
 }
 
