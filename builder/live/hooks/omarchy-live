@@ -73,14 +73,21 @@ write_report() {
         fi
     fi
 
-    # The internal System ESP, already mounted read-write by the asahi hook
-    # at /run/.system-efi, is always visible: drop the report in a dedicated
-    # directory. We never touch any of Asahi's boot files there.
-    if [ -d /run/.system-efi ]; then
-        mkdir -p /run/.system-efi/omarchy-mx-mac-iso-reports 2>/dev/null
-        if cp "$report" "/run/.system-efi/omarchy-mx-mac-iso-reports/report-$stamp.txt" 2>/dev/null; then
-            echo "omarchy-live: report saved to the internal ESP (omarchy-mx-mac-iso-reports/report-$stamp.txt)" >&2
-            return 0
+    # The internal System ESP is always visible (NVMe works even when USB
+    # does not). The asahi hook mounts and unmounts it early, so mount it
+    # ourselves: its PARTUUID is published in the device tree.
+    sys_esp_guid=$(tr -d '\0' < /proc/device-tree/chosen/asahi,efi-system-partition 2>/dev/null)
+    [ -n "$sys_esp_guid" ] || sys_esp_guid=$(tr -d '\0' < /proc/device-tree/asahi,efi-system-partition 2>/dev/null)
+    if [ -n "$sys_esp_guid" ] && [ -e "/dev/disk/by-partuuid/$sys_esp_guid" ]; then
+        mkdir -p /run/esp-rw
+        if mount -t vfat -o rw "/dev/disk/by-partuuid/$sys_esp_guid" /run/esp-rw 2>/dev/null; then
+            mkdir -p /run/esp-rw/omarchy-mx-mac-iso-reports 2>/dev/null
+            if cp "$report" "/run/esp-rw/omarchy-mx-mac-iso-reports/report-$stamp.txt" 2>/dev/null; then
+                umount /run/esp-rw
+                echo "omarchy-live: report saved to the internal ESP (omarchy-mx-mac-iso-reports/report-$stamp.txt)" >&2
+                return 0
+            fi
+            umount /run/esp-rw 2>/dev/null
         fi
     fi
 
