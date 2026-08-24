@@ -1,13 +1,40 @@
 #!/bin/busybox sh
 # Live boot late hook: find the payload, overlay it writable, switch_root.
 
+retrigger_usb() {
+    # A port that negotiated its Type-C role before the kernel took over may
+    # never start host mode (seen on t8112: the controller holding the stick
+    # stayed silent while the other one worked). Kicking every dwc3
+    # controller forces each port to renegotiate, so it does not matter
+    # which USB-C port the stick is plugged into.
+    for dev in /sys/bus/platform/drivers/dwc3-apple/*:*; do
+        [ -e "$dev" ] || continue
+        echo "${dev##*/}" > /sys/bus/platform/drivers/dwc3-apple/unbind 2>/dev/null
+    done
+    sleep 1
+    for dev in /sys/bus/platform/devices/*usb; do
+        [ -e "$dev" ] || continue
+        echo "${dev##*/}" > /sys/bus/platform/drivers/dwc3-apple/bind 2>/dev/null
+    done
+}
+
 run_latehook() {
     payload=/dev/disk/by-partlabel/omarchy-mx-root
 
-    # USB storage can take a while to enumerate behind the Type-C muxes.
+    # Filesystem modules have no device modalias, so udev never loads them:
+    # request btrfs explicitly (xor and raid6_pq come along as dependencies).
+    modprobe btrfs 2>/dev/null
+
+    # Wait for the stick, kicking the controllers while it stays invisible:
+    # hot-plug handles a slow port, rebind handles a port stuck before it
+    # ever started host mode.
     tries=0
-    while [ ! -e "$payload" ] && [ "$tries" -lt 30 ]; do
-        sleep 1
+    while [ ! -e "$payload" ] && [ "$tries" -lt 6 ]; do
+        if [ "$tries" -gt 0 ] && [ $((tries % 2)) -eq 1 ]; then
+            echo "omarchy-live: payload not found yet, kicking USB controllers"
+            retrigger_usb
+        fi
+        sleep 5
         tries=$((tries + 1))
     done
 
@@ -15,10 +42,6 @@ run_latehook() {
         echo "omarchy-live: payload partition omarchy-mx-root not found" >&2
         exec sh
     fi
-
-    # Filesystem modules have no device modalias, so udev never loads them:
-    # request btrfs explicitly (xor and raid6_pq come along as dependencies).
-    modprobe btrfs 2>/dev/null
 
     mkdir -p /new_root
     if ! mount -o ro,subvol=@ "$payload" /new_root; then

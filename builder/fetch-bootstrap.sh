@@ -40,14 +40,24 @@ if [[ ! -f $tar_path ]]; then
 fi
 
 printf '=> Verifying checksum\n'
-expected=$(curl --fail --location --retry 3 -s "$bootstrap_url.md5" | awk '{ print $1 }')
-[[ $expected =~ ^[0-9a-f]{32}$ ]] || fail "Could not read the bootstrap checksum."
-if command -v md5sum >/dev/null 2>&1; then
-  actual=$(md5sum "$tar_path" | awk '{ print $1 }')
+# The md5 lives on the flaky http mirror; a cached-and-verified tarball
+# skips it entirely so repeat builds work offline.
+marker="$tar_path.verified"
+if [[ -f $marker ]]; then
+  printf '=> Bootstrap tarball already verified\n'
 else
-  actual=$(md5 -q "$tar_path")
+  if ! expected=$(curl --fail --location --retry 3 -s "$bootstrap_url.md5" | awk '{ print $1 }'); then
+    fail "Could not download the bootstrap checksum."
+  fi
+  [[ $expected =~ ^[0-9a-f]{32}$ ]] || fail "Could not read the bootstrap checksum."
+  if command -v md5sum >/dev/null 2>&1; then
+    actual=$(md5sum "$tar_path" | awk '{ print $1 }')
+  else
+    actual=$(md5 -q "$tar_path")
+  fi
+  [[ $actual == "$expected" ]] || fail "Bootstrap checksum mismatch."
+  touch "$marker"
 fi
-[[ $actual == "$expected" ]] || fail "Bootstrap checksum mismatch."
 
 printf '=> Importing %s into Docker\n' "$base_image"
 gzip -dc "$tar_path" | "$docker_bin" import \
