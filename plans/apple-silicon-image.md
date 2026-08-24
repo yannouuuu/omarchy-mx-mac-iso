@@ -205,11 +205,14 @@ builder.
 
 On macOS hosts specifically: Docker Desktop's linuxkit kernel (6.12 as of
 2026-08) ships btrfs built-in and working loop devices, so the probe passes
-there — verified during the first S3 build. Two macOS quirks are handled by
-the host script: a stuck credential helper makes every registry call hang
-(bypassed with an empty client config, we only pull public images), and
-`docker cp` does not preserve sparseness, so the copied artifact allocates
-its full size.
+there — verified during the first S3 build. Three macOS quirks are handled
+by the host script: a stuck credential helper makes every registry call hang
+(bypassed with an empty client config, we only pull public images), loop
+partition scanning (`-P`) finds no devices (`max_part=0` — attach partitions
+by offset instead), and `docker cp` materializes zeros (artifacts are
+exported through a GNU `tar --sparse` stream instead). The payload defaults
+to a 6G sparse ceiling over ~2.5 GiB of real content; `discard` mounting and
+`fstrim` hand free extents back before export.
 
 ## Not bricking our machines
 

@@ -16,7 +16,10 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 configs_dir="$repo_root/configs"
 
 out_dir=/out
-image_size=16G
+# Sparse ceiling only: the live system writes to a RAM overlay and the
+# installer resizes btrfs to fill the target partition, so a tight default
+# costs nothing and keeps the shipped image small.
+image_size=5500M
 
 fail() {
   printf 'Error: %s\n' "$*" >&2
@@ -174,7 +177,8 @@ truncate -s "$image_size" "$image_path"
 mkfs.btrfs -q -L omarchy-mx-mac "$image_path"
 mnt_dir="$work_dir/mnt"
 mkdir "$mnt_dir"
-mount -o loop "$image_path" "$mnt_dir"
+# 'discard' lets freed extents punch holes into the sparse backing file.
+mount -o loop,discard "$image_path" "$mnt_dir"
 
 for subvol_name in @ @home @log; do
   btrfs subvolume create "$mnt_dir/$subvol_name" >/dev/null
@@ -182,6 +186,11 @@ done
 
 say "Populating @"
 rsync -aHAX --numeric-ids "$rootfs_dir"/ "$mnt_dir/@/"
+
+# Discard support punches holes for freed extents straight into the sparse
+# backing file; fstrim hands back everything unused before we detach.
+fstrim -v "$mnt_dir" ||
+  printf 'Warning: fstrim failed; the payload keeps its free space allocated.\n'
 
 umount "$mnt_dir"
 

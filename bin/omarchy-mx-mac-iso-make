@@ -96,15 +96,28 @@ fi
 
 status=0
 "$docker_bin" "${run_args[@]}" "$image_name" \
-  bash /build/builder/build-rootfs.sh --out /cache/out --size "${OMARCHY_MX_MAC_ISO_SIZE:-16G}" || status=$?
+  bash /build/builder/build-rootfs.sh --out /cache/out --size "${OMARCHY_MX_MAC_ISO_SIZE:-5500M}" || status=$?
 
 if (( status == 0 )); then
   mkdir -p "$repo_root/$out_name"
-  for artifact in root.img root.img.sha256 omarchy-mx-mac-live.img omarchy-mx-mac-live.img.sha256; do
-    "$docker_bin" cp "$container_name:/cache/out/$artifact" "$repo_root/$out_name/$artifact"
-  done
+  # docker cp materializes every zero; stream a GNU sparse tar from a
+  # throwaway container on the cache volume instead so the artifacts keep
+  # their holes on the host.
+  "$docker_bin" run --rm --platform linux/arm64 \
+    -v "$cache_volume:/cache:ro" "$image_name" \
+    tar --sparse -C /cache/out -cf - \
+    root.img root.img.sha256 \
+    omarchy-mx-mac-live.img omarchy-mx-mac-live.img.sha256 |
+    tar -xf - -C "$repo_root/$out_name"
   chown -R "$(id -u):$(id -g)" "$repo_root/$out_name" 2>/dev/null || true
   printf '=> Artifacts copied to %s/\n' "$out_name"
+  for artifact in root.img omarchy-mx-mac-live.img; do
+    apparent=$(wc -c <"$repo_root/$out_name/$artifact")
+    allocated=$(du -k "$repo_root/$out_name/$artifact" | awk '{ print $1 }')
+    printf '   %-26s apparent %6.1fG  allocated %5.1fG\n' "$artifact" \
+      "$(awk -v b="$apparent" 'BEGIN { printf "%.2f", b / 1073741824 }')" \
+      "$(awk -v k="$allocated" 'BEGIN { printf "%.2f", k / 1048576 }')"
+  done
 fi
 
 "$docker_bin" rm -f "$container_name" >/dev/null 2>&1 || true

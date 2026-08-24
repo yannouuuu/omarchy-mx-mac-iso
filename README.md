@@ -36,9 +36,10 @@ builds reuse caches.
 ./bin/omarchy-mx-mac-iso-make --debug    # shell into the builder container
 ```
 
-Around 30 GB of free disk space are needed for caches plus the artifact.
-Note `docker cp` does not preserve sparseness, so `release/root.img`
-allocates its full size on the macOS side.
+Around 15 GB of free disk space are needed for caches plus the artifacts.
+They arrive sparse (the payload is a 6G ceiling holding ~2.5 GiB of real
+content): `fstrim` inside the builder and a GNU sparse tar stream keep the
+holes, so the allocated footprint stays near the content size.
 
 ## Layout
 
