@@ -3,6 +3,7 @@
 
 build() {
   add_module "btrfs"
+  add_module "vfat"
   add_module "loop"
   add_module "dwc3-apple"
   add_module "dwc3"
