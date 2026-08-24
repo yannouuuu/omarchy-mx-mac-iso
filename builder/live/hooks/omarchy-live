@@ -16,9 +16,14 @@ run_latehook() {
         exec sh
     fi
 
+    # Filesystem modules have no device modalias, so udev never loads them:
+    # request btrfs explicitly (xor and raid6_pq come along as dependencies).
+    modprobe btrfs 2>/dev/null
+
     mkdir -p /new_root
     if ! mount -o ro,subvol=@ "$payload" /new_root; then
         echo "omarchy-live: mounting the payload failed" >&2
+        cat /proc/filesystems >&2
         exec sh
     fi
 
