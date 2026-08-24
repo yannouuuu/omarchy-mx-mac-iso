@@ -34,6 +34,7 @@ RUN pacman-key --keyserver hkps://keyserver.ubuntu.com --recv-keys "${ASAHI_ALAR
     e2fsprogs \
     git \
     gnupg \
+    grub \
     libarchive \
     parted \
     rsync \

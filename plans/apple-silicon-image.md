@@ -248,6 +248,12 @@ Rails, cheapest first:
 - **S4 — The installer**: overlay + `switch_root` live boot, TUI (gum),
   questions sourced like the mx installers (username, password, hostname,
   keymap) plus its own encrypt question (default yes). Install pipeline above.
+  *Progress: the bootable image assembles end to end (ESP with standalone
+  GRUB, kernel from the module tree at `usr/lib/modules/<ver>/vmlinuz`,
+  initramfs generated in-chroot with `--moduleroot` semantics via chroot
+  depmod+mkinitcpio, explicit dwc3 module list, overlay hook) and the TUI
+  collects and stores answers in `/run`. Still open: hardware boot test,
+  then the disk pipeline itself.*
 - **S5 — asahi-installer os package**: same `root.img` + `esp/` (GRUB,
   kernel, initramfs on the ESP), wrapping the signed bundle. Later.
 - **S6 — CI and hosting**: `workflow_dispatch` green before nightly; hosting

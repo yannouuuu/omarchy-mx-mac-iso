@@ -9,12 +9,19 @@ Design: [`plans/apple-silicon-image.md`](plans/apple-silicon-image.md).
 
 ## Status
 
-Stage S2-S3 (first cut): the container builder produces a sparse `root.img`
-with a provisioned Omarchy 4 Quattro root filesystem from the **signed**
-asahi-quattro channel. No live boot, installer, or os-package yet — see the
-plan's stage list.
+Stage S3-S4 (first cut): `bin/omarchy-mx-mac-iso-make` produces two artifacts:
 
-Until this image matures, [`install-omarchy-mx-mac.sh`](https://github.com/maralcbr/omarchy-mx-mac#install-omarchy-4)
+- `release/root.img` — sparse btrfs payload with a provisioned Omarchy 4
+  Quattro root filesystem from the **signed** asahi-quattro channel.
+- `release/omarchy-mx-mac-live.img` — the bootable GPT disk image: FAT32 ESP
+  (standalone GRUB, kernel, initramfs with the explicit `dwc3-apple` module
+  list and an overlay/`switch_root` hook) plus the payload partition.
+  The live boot lands on a gum TUI that asks every question the install
+  pipeline will consume; it writes nothing to disk yet.
+
+No real-hardware boot test has happened — flashing to USB and booting after
+a UEFI-only provision is the next milestone. Until this image matures,
+[`install-omarchy-mx-mac.sh`](https://github.com/maralcbr/omarchy-mx-mac#install-omarchy-4)
 remains the supported installation path.
 
 ## Build

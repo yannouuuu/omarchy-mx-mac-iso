@@ -1,0 +1,27 @@
+#!/bin/bash
+# mkinitcpio install hook: pulls the live-boot modules into the image.
+
+build() {
+  add_module "btrfs"
+  add_module "loop"
+  add_module "dwc3-apple"
+  add_module "dwc3"
+  add_module "phy-apple-atc"
+  add_module "mux-apple-display-crossbar"
+  add_module "tps6598x"
+  add_module "typec"
+  add_module "xhci-plat-hcd"
+  add_module "xhci-hcd"
+  add_module "usb-storage"
+  add_module "uas"
+  add_runscript
+}
+
+help() {
+  cat <<HELPEOF
+omarchy-live: mounts the read-only btrfs payload partition (searched by
+PARTLABEL omarchy-mx-root), overlays a tmpfs so the live system is writable,
+and switches into it. Firmware arrives through the stock asahi hook reading
+the machine's internal ESP.
+HELPEOF
+}

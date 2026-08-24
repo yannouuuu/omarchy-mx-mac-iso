@@ -100,11 +100,11 @@ status=0
 
 if (( status == 0 )); then
   mkdir -p "$repo_root/$out_name"
-  for artifact in root.img root.img.sha256; do
+  for artifact in root.img root.img.sha256 omarchy-mx-mac-live.img omarchy-mx-mac-live.img.sha256; do
     "$docker_bin" cp "$container_name:/cache/out/$artifact" "$repo_root/$out_name/$artifact"
   done
   chown -R "$(id -u):$(id -g)" "$repo_root/$out_name" 2>/dev/null || true
-  printf '=> Artifact copied to %s/\n' "$out_name"
+  printf '=> Artifacts copied to %s/\n' "$out_name"
 fi
 
 "$docker_bin" rm -f "$container_name" >/dev/null 2>&1 || true

@@ -110,6 +110,10 @@ for service_name in NetworkManager.service iwd.service; do
   ln -sf "/usr/lib/systemd/system/$service_name" "$wants_dir/$service_name"
 done
 
+say "Layering the live installer overlay"
+rsync -a "$repo_root/builder/rootfs-overlay/" "$rootfs_dir/"
+chmod 0755 "$rootfs_dir/usr/local/bin/omarchy-mx-mac-install"
+
 target_gnupg=$rootfs_dir/etc/pacman.d/gnupg
 pacman-key --gpgdir "$target_gnupg" --init >/dev/null
 
@@ -180,6 +184,13 @@ say "Populating @"
 rsync -aHAX --numeric-ids "$rootfs_dir"/ "$mnt_dir/@/"
 
 umount "$mnt_dir"
+
+# The staged root is still needed to generate the live initramfs and to
+# copy the kernel into the ESP, so assemble the bootable image before any
+# cleanup.
+bash "$repo_root/builder/build-live-image.sh" \
+  --rootfs "$rootfs_dir" --payload "$image_path" --out "$out_dir"
+
 rm -rf "$rootfs_dir" "$bundle_dir"
 
 apparent=$(du -h --apparent-size "$image_path" | cut -f1)

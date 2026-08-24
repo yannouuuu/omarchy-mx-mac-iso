@@ -1,0 +1,35 @@
+#!/bin/busybox sh
+# Live boot late hook: find the payload, overlay it writable, switch_root.
+
+run_latehook() {
+    payload=/dev/disk/by-partlabel/omarchy-mx-root
+
+    # USB storage can take a while to enumerate behind the Type-C muxes.
+    tries=0
+    while [ ! -e "$payload" ] && [ "$tries" -lt 30 ]; do
+        sleep 1
+        tries=$((tries + 1))
+    done
+
+    if [ ! -e "$payload" ]; then
+        echo "omarchy-live: payload partition omarchy-mx-root not found" >&2
+        exec sh
+    fi
+
+    mkdir -p /new_root
+    if ! mount -o ro,subvol=@ "$payload" /new_root; then
+        echo "omarchy-live: mounting the payload failed" >&2
+        exec sh
+    fi
+
+    # A tmpfs overlay makes the read-only payload behave like a writable
+    # system without ever writing to the stick itself.
+    mkdir -p /new_root/run/omarchy-live-upper /new_root/run/omarchy-live-work
+    if ! mount -t overlay overlay \
+        -o lowerdir=/new_root,upperdir=/new_root/run/omarchy-live-upper,workdir=/new_root/run/omarchy-live-work \
+        /new_root; then
+        echo "omarchy-live: overlay setup failed; continuing read-only" >&2
+    fi
+
+    echo "omarchy-live: switching root"
+}

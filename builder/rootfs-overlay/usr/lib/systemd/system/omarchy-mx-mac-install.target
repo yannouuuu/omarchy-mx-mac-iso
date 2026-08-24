@@ -1,0 +1,12 @@
+[Unit]
+Description=Omarchy MX Mac live installer
+Requires=basic.target
+After=basic.target
+AllowIsolate=yes
+
+# Deliberately no default.target alias: the installed system boots to its
+# desktop normally; only the live medium selects this via
+# systemd.unit=omarchy-mx-mac-install.target on the kernel command line.
+
+[Install]
+WantedBy=multi-user.target

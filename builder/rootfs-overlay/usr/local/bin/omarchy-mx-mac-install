@@ -1,0 +1,57 @@
+#!/bin/bash
+# Omarchy MX Mac live installer — first iteration: asks every question the
+# install pipeline will need and stores signed-off answers in /run.
+#
+# The disk pipeline (parted, optional luksFormat, dd of the payload, GRUB
+# into the existing ESP) lands in the next iteration; this script refuses to
+# touch any disk until then.
+
+set -euo pipefail
+
+answers=/run/omarchy-mx-mac-answers.env
+
+fail() {
+  printf 'Error: %s\n' "$*" >&2
+  exit 1
+}
+
+command -v gum >/dev/null 2>&1 || fail "gum is unavailable."
+
+clear
+printf '\n  Omarchy MX Mac — Apple Silicon live installer\n\n'
+gum style --foreground 212 "This medium can install or repair Omarchy MX Mac on this machine."
+gum style --faint "Nothing is written to disk in this preview build."
+
+hostname=$(gum input --placeholder "hostname" --value "omarchy" --header "Hostname")
+[[ $hostname =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}$ ]] || fail "'$hostname' is not a valid hostname."
+
+username=$(gum input --placeholder "your username" --header "User name")
+[[ $username =~ ^[a-z_][a-z0-9_-]{0,30}$ ]] || fail "'$username' is not a valid user name."
+
+while :; do
+  password=$(gum input --password --header "Password for $username")
+  password_again=$(gum input --password --header "Password again")
+  [[ -n $password && $password == "$password_again" ]] && break
+  gum style --foreground 196 "Passwords are empty or do not match; try again."
+done
+
+keymap=$(gum choose --header "Keymap" us fr de es it uk ca ch br jp no se "fi" pl pt ru ua be)
+encrypt=$(gum confirm "Encrypt the system partition (LUKS2)?" --affirmative "Yes" --negative "No" && echo yes || echo no)
+
+{
+  printf 'hostname=%q\n' "$hostname"
+  printf 'username=%q\n' "$username"
+  printf 'password=%q\n' "$password"
+  printf 'keymap=%s\n' "$keymap"
+  printf 'encrypt=%s\n' "$encrypt"
+} >"$answers"
+chmod 600 "$answers"
+
+clear
+gum style --foreground 46 "Answers recorded."
+gum format \
+  "- hostname: **$hostname**" \
+  "- user: **$username**" \
+  "- keymap: **$keymap**" \
+  "- luks: **$encrypt**"
+gum style --faint "The install pipeline arrives with the next builder release; rebooting now is safe."

@@ -1,0 +1,19 @@
+[Unit]
+Description=Omarchy MX Mac live installer TUI
+Conflicts=getty@tty1.service
+After=systemd-user-sessions.service plymouth-quit-wait.service
+OnFailure=emergency.target
+
+[Service]
+Type=oneshot
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+RemainAfterExit=no
+ExecStart=/usr/local/bin/omarchy-mx-mac-install
+
+[Install]
+WantedBy=omarchy-mx-mac-install.target
