@@ -1,5 +1,7 @@
 #!/bin/busybox sh
 # Live boot late hook: find the payload, overlay it writable, switch_root.
+# When the payload never shows up, write a full diagnostic report to the
+# stick's own ESP (readable from macOS) before dropping to a shell.
 
 retrigger_usb() {
     # A port that negotiated its Type-C role before the kernel took over may
@@ -16,6 +18,62 @@ retrigger_usb() {
         [ -e "$dev" ] || continue
         echo "${dev##*/}" > /sys/bus/platform/drivers/dwc3-apple/bind 2>/dev/null
     done
+}
+
+force_host_roles() {
+    # Last-resort nudges: ask every Type-C port and every dwc3 controller to
+    # take the host role, in case automatic role switching stalled.
+    for role in /sys/bus/platform/devices/*.usb/*/role /sys/bus/platform/devices/*.usb/role; do
+        [ -w "$role" ] && echo host >"$role" 2>/dev/null
+    done
+    for data_role in /sys/class/typec/port*/data_role; do
+        [ -e "$data_role" ] || continue
+        grep -q '\[device\]' "$data_role" 2>/dev/null && echo host >"$data_role" 2>/dev/null
+    done
+}
+
+write_report() {
+    report=/tmp/omarchy-live-report.txt
+    {
+        echo "=== omarchy-live diagnostic report ==="
+        date
+        echo; echo "--- /proc/cmdline"; cat /proc/cmdline
+        echo; echo "--- /proc/modules"; cat /proc/modules
+        echo; echo "--- /proc/filesystems"; cat /proc/filesystems
+        echo; echo "--- typec state"
+        for port in /sys/class/typec/port*; do
+            [ -e "$port" ] || continue
+            echo "$port:"
+            for f in data_role power_role preferred_role vconn_source; do
+                [ -e "$port/$f" ] && echo "  $f = $(cat "$port/$f" 2>/dev/null)"
+            done
+        done
+        echo; echo "--- udc (peripheral controllers)"; ls -l /sys/class/udc/ 2>/dev/null
+        echo; echo "--- dwc3 role files"
+        for role in /sys/bus/platform/devices/*.usb/*/role /sys/bus/platform/devices/*.usb/role; do
+            [ -e "$role" ] && echo "$role = $(cat "$role" 2>/dev/null)"
+        done
+        echo; echo "--- /dev storage nodes"; ls -l /dev/sd* /dev/nvme* 2>/dev/null
+        echo; echo "--- dmesg (usb/phy/mux/typec/pd)"
+        dmesg | grep -iE 'usb|xhci|dwc3|phy|mux|typec|pd|storage|sd[a-z]' | tail -n 80
+        echo; echo "--- dmesg (full tail)"
+        dmesg | tail -n 120
+    } >"$report" 2>&1
+
+    # The stick's own ESP is a plain FAT32 we are allowed to write: drop the
+    # report there so the next macOS boot can just open it.
+    esp=/dev/disk/by-partlabel/omarchy-mx-esp
+    if [ -e "$esp" ]; then
+        mkdir -p /run/esp
+        if mount -t vfat -o rw "$esp" /run/esp 2>/dev/null; then
+            cp "$report" /run/esp/omarchy-live-report.txt
+            umount /run/esp
+            echo "omarchy-live: report saved to the stick ESP (omarchy-live-report.txt)" >&2
+            return 0
+        fi
+    fi
+    echo "omarchy-live: report kept in initramfs at $report" >&2
+    return 1
 }
 
 run_latehook() {
@@ -38,8 +96,17 @@ run_latehook() {
         tries=$((tries + 1))
     done
 
+    # Still nothing: force host roles everywhere and give it one more window.
+    if [ ! -e "$payload" ]; then
+        echo "omarchy-live: forcing host roles on every Type-C port"
+        force_host_roles
+        sleep 6
+    fi
+
     if [ ! -e "$payload" ]; then
         echo "omarchy-live: payload partition omarchy-mx-root not found" >&2
+        write_report
+        echo "omarchy-live: reboot to macOS and open omarchy-live-report.txt from the stick" >&2
         exec sh
     fi
 
@@ -47,6 +114,7 @@ run_latehook() {
     if ! mount -o ro,subvol=@ "$payload" /new_root; then
         echo "omarchy-live: mounting the payload failed" >&2
         cat /proc/filesystems >&2
+        write_report
         exec sh
     fi
 
