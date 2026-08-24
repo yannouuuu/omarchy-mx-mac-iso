@@ -51,6 +51,17 @@ done
 command -v "$docker_bin" >/dev/null 2>&1 ||
   fail "Docker CLI not found. Install Docker Desktop or colima ('brew install colima && colima start --arch aarch64 --vm-type vz')."
 
+# A stuck macOS credential helper makes every pull hang forever. We only ever
+# touch public images here, so default to an empty client config; set
+# OMARCHY_MX_MAC_ISO_USE_HOST_DOCKER_CONFIG=1 to keep your own one.
+if [[ -z ${OMARCHY_MX_MAC_ISO_USE_HOST_DOCKER_CONFIG:-} ]]; then
+  empty_docker_config=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-mx-mac-iso-docker.XXXXXXXX")
+  printf '{}\n' >"$empty_docker_config/config.json"
+  [[ -d $HOME/.docker/cli-plugins ]] &&
+    ln -s "$HOME/.docker/cli-plugins" "$empty_docker_config/cli-plugins"
+  export DOCKER_CONFIG="$empty_docker_config"
+fi
+
 if ! "$docker_bin" info >/dev/null 2>&1; then
   fail "No Docker daemon is reachable. Start Docker Desktop, or run 'colima start --arch aarch64 --vm-type vz'."
 fi
@@ -59,8 +70,13 @@ if [[ $(uname -m) != arm64 ]]; then
   printf 'Warning: host is not arm64; the build will run under emulation and be slow.\n' >&2
 fi
 
+printf '=> Preparing the Arch Linux ARM base image\n'
+bash "$repo_root/builder/fetch-bootstrap.sh"
+
+base_image=omarchy-mx-mac-alarm-base
 printf '=> Building the builder image (%s)\n' "$image_name"
-"$docker_bin" build --platform linux/arm64 -f "$repo_root/builder/Containerfile" -t "$image_name" "$repo_root"
+"$docker_bin" build --platform linux/arm64 --build-arg "BASE_IMAGE=$base_image" \
+  -f "$repo_root/builder/Containerfile" -t "$image_name" "$repo_root"
 "$docker_bin" volume create "$cache_volume" >/dev/null
 
 container_name="omarchy-mx-mac-iso-build-$$"

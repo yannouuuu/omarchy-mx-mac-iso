@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #
 # GPT safety helpers shared by omarchy-mx-mac-iso builders and installers.
 #
@@ -7,7 +8,12 @@
 # type carries -11AA-AA11-00306543ECAC.
 #
 
-DS_APPLE_GPT_SUFFIX="-11AA-AA11-00306543ECAC"
+# We compare lowercased because sfdisk echoes GUIDs verbatim.
+DS_APPLE_GPT_SUFFIX="-11aa-aa11-00306543ecac"
+
+# Reference table of the well-known Apple type GUIDs covered by the suffix
+# rule above; the refusal logic deliberately matches the whole family.
+# shellcheck disable=SC2034
 DS_KNOWN_APPLE_GUIDS=(
   "7C3457EF-0000-11AA-AA11-00306543ECAC" # Apple APFS
   "69646961-0000-11AA-AA11-00306543ECAC" # Apple iBoot/boot product

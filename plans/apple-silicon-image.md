@@ -203,9 +203,13 @@ nightly + `workflow_dispatch`. Privileged containers are required for loop
 devices; until the root is lean, local Apple Silicon stays the release
 builder.
 
-On macOS hosts specifically: Docker Desktop's VM may lack the `btrfs` module.
-The host script probes for it and fails fast with instructions; colima (full
-Ubuntu VM) or the CI runner are the supported paths if the probe fails.
+On macOS hosts specifically: Docker Desktop's linuxkit kernel (6.12 as of
+2026-08) ships btrfs built-in and working loop devices, so the probe passes
+there — verified during the first S3 build. Two macOS quirks are handled by
+the host script: a stuck credential helper makes every registry call hang
+(bypassed with an empty client config, we only pull public images), and
+`docker cp` does not preserve sparseness, so the copied artifact allocates
+its full size.
 
 ## Not bricking our machines
 

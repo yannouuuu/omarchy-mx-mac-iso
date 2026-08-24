@@ -32,9 +32,10 @@ new_image() {
 
 write_partition() {
   local image=$1 index=$2 type=$3
+  local start=$((2048 + (index - 1) * 8192))
   {
     sfdisk -d "$image" | grep -v '^label-id'
-    printf '%s%s : start=2048, size=4096, type=%s\n' "$(basename "$image")" "$index" "$type"
+    printf '%s%s : start=%d, size=4096, type=%s\n' "$(basename "$image")" "$index" "$start" "$type"
   } | sfdisk "$image" >/dev/null 2>&1
 }
 
@@ -105,17 +106,30 @@ echo "# created parts rollback"
 
 image=$(new_image rollback.img)
 write_partition "$image" 1 "$efi"
+write_partition "$image" 2 "$linux"
 ds_record_created_part "$image" 1
 ds_record_created_part "$image" 2
-(( ${#ds_created_parts[@]} == 2 )) && pass "two created parts recorded" || fail "record count wrong"
+if (( ${#ds_created_parts[@]} == 2 )); then
+  pass "two created parts recorded"
+else
+  fail "record count wrong"
+fi
 if ds_rollback_created_parts; then
   pass "rollback succeeded"
 else
   fail "rollback reported failure"
 fi
 count=$(sfdisk -d "$image" 2>/dev/null | grep -c ' : ' || true)
-(( count == 0 )) && pass "partition table empty after rollback" || fail "table still has $count partitions"
-(( ${#ds_created_parts[@]} == 0 )) && pass "registry cleared" || fail "registry not cleared"
+if (( count == 0 )); then
+  pass "partition table empty after rollback"
+else
+  fail "table still has $count partitions"
+fi
+if (( ${#ds_created_parts[@]} == 0 )); then
+  pass "registry cleared"
+else
+  fail "registry not cleared"
+fi
 
 echo
 if (( failures == 0 )); then

@@ -1,25 +1,43 @@
 # Builder container for omarchy-mx-mac-iso.
 #
-# The linux/arm64 variant of the official archlinux image is Arch Linux ARM,
-# so pacman here already talks to the [core] [extra] [alarm] [aur] mirrors
-# used by Asahi Alarm users. Run it with --platform linux/arm64 and
-# --privileged: assembling root.img needs loop devices and the btrfs module
-# of the host VM kernel.
+# No registry publishes an arm64 Arch container image, so bin/
+# omarchy-mx-mac-iso-make first imports the official Arch Linux ARM
+# aarch64 bootstrap as BASE_IMAGE (see builder/fetch-bootstrap.sh).
+#
+# Ordering matters: the first sync runs against the image's stock ALARM
+# repositories to fetch archlinuxarm-keyring; only then do we switch to our
+# five-repository config (which includes the signed [asahi-alarm]), import
+# Asahi Alarm's signing key by pinned fingerprint, and install the tooling.
+#
+# Run it with --platform linux/arm64 and --privileged: assembling root.img
+# needs loop devices and the btrfs module of the host VM kernel.
 
-FROM docker.io/library/archlinux:base-devel
+ARG BASE_IMAGE=omarchy-mx-mac-alarm-base
+FROM ${BASE_IMAGE}
 
-RUN pacman-key --init && pacman -Syu --noconfirm \
-  arch-install-scripts \
-  btrfs-progs \
-  curl \
-  dosfstools \
-  e2fsprogs \
-  git \
-  gnupg \
-  libarchive \
-  parted \
-  rsync \
-  util-linux
+RUN sed -i '/^\[options\]$/a DisableSandbox' /etc/pacman.conf \
+  && pacman-key --init \
+  && pacman-key --populate archlinuxarm \
+  && pacman -Sy --noconfirm archlinuxarm-keyring
+
+COPY configs/pacman.conf /etc/pacman.conf
+
+ARG ASAHI_ALARM_FINGERPRINT=12CE6799A94A3F1B5DDFFE88F576553597FB8FEB
+RUN pacman-key --keyserver hkps://keyserver.ubuntu.com --recv-keys "${ASAHI_ALARM_FINGERPRINT}" \
+  && pacman-key --lsign-key "${ASAHI_ALARM_FINGERPRINT}" \
+  && pacman -Syu --noconfirm \
+    arch-install-scripts \
+    asahi-alarm-keyring \
+    btrfs-progs \
+    curl \
+    dosfstools \
+    e2fsprogs \
+    git \
+    gnupg \
+    libarchive \
+    parted \
+    rsync \
+    util-linux
 
 WORKDIR /build
 CMD ["/bin/bash"]

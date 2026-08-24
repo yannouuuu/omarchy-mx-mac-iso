@@ -19,17 +19,19 @@ remains the supported installation path.
 
 ## Build
 
-Requires Docker (or colima) with an `linux/arm64` VM whose kernel has the
-`btrfs` module and loop devices — the host script probes both and tells you
-what is missing.
+Requires Docker with an `linux/arm64` VM — Docker Desktop on Apple Silicon
+works as-is (its kernel ships btrfs and loop devices). The first run imports
+the official Arch Linux ARM bootstrap (~250 MB) and syncs repositories; later
+builds reuse caches.
 
 ```bash
 ./bin/omarchy-mx-mac-iso-make            # build release/root.img
-./bin/omarchy-mx-mac-iso-make --debug    # shell into the build container
+./bin/omarchy-mx-mac-iso-make --debug    # shell into the builder container
 ```
 
-Around 30 GB of free disk space are needed for caches plus the uncompressed
-artifact.
+Around 30 GB of free disk space are needed for caches plus the artifact.
+Note `docker cp` does not preserve sparseness, so `release/root.img`
+allocates its full size on the macOS side.
 
 ## Layout
 

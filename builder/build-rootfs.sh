@@ -51,18 +51,17 @@ done
 [[ -f $configs_dir/pacman.conf && -f $configs_dir/packages.txt ]] ||
   fail "configs/pacman.conf or configs/packages.txt is missing."
 
-mapfile -t packages < <(
-  sed 's/#.*//' "$configs_dir/packages.txt" | tr -d '[:space:]' | grep -v '^$'
-)
+mapfile -t packages < <(grep -vE '^[[:space:]]*(#|$)' "$configs_dir/packages.txt")
 (( ${#packages[@]} > 0 )) || fail "No packages listed in configs/packages.txt."
 
+mkdir -p "$out_dir"
 work_dir=$(mktemp -d "$out_dir/.build.XXXXXXXX")
 trap 'rm -rf "$work_dir"' EXIT
 rootfs_dir="$work_dir/rootfs"
 bundle_dir="$work_dir/bundle"
 hook_dir="$work_dir/empty-hooks"
 cache_dir=/cache/pacman
-mkdir -p "$rootfs_dir" "$bundle_dir" "$hook_dir" "$cache_dir" "$out_dir"
+mkdir -p "$rootfs_dir" "$bundle_dir" "$hook_dir" "$cache_dir"
 
 pac_flags=(
   --config "$configs_dir/pacman.conf"
@@ -77,6 +76,7 @@ pac_flags=(
 say() { printf '=> %s\n' "$*"; }
 
 say "Syncing repository databases"
+mkdir -p "$rootfs_dir/var/lib/pacman"
 pacman "${pac_flags[@]}" -Sy
 
 say "Installing ${#packages[@]} repository packages into the staged root"
@@ -111,22 +111,50 @@ for service_name in NetworkManager.service iwd.service; do
 done
 
 target_gnupg=$rootfs_dir/etc/pacman.d/gnupg
-pacman-key --gpgdir "$target_gnupg" --init >/dev/null 2>&1
+pacman-key --gpgdir "$target_gnupg" --init >/dev/null
+
+# Keyrings shipped in this builder container import through --populate.
 populate_names=()
-for keyring_name in archlinux archlinuxarm omarchy; do
-  [[ -f $rootfs_dir/usr/share/pacman/keyrings/$keyring_name.gpg ]] && populate_names+=("$keyring_name")
+for keyring_name in archlinux archlinuxarm asahi-alarm omarchy; do
+  if [[ -f /usr/share/pacman/keyrings/$keyring_name.gpg ]]; then
+    populate_names+=("$keyring_name")
+  fi
 done
 if (( ${#populate_names[@]} )); then
-  pacman-key --gpgdir "$target_gnupg" --populate "${populate_names[@]}" >/dev/null 2>&1
+  pacman-key --gpgdir "$target_gnupg" --populate "${populate_names[@]}" >/dev/null
 fi
+
+# Keyrings that only exist inside the staged root (omarchy-keyring comes
+# from the signed bundle, not a repository) are imported by hand and every
+# key locally signed so Required signatures verify.
+import_staged_keyring() {
+  local keyring_path=$1 fingerprint
+  pacman-key --gpgdir "$target_gnupg" --add "$keyring_path"
+  while IFS= read -r fingerprint; do
+    pacman-key --gpgdir "$target_gnupg" --lsign-key "$fingerprint" >/dev/null
+  done < <(gpg --show-keys --with-colons "$keyring_path" |
+    awk -F: '$1 == "fpr" { print $10 }')
+}
+
+for keyring_path in "$rootfs_dir"/usr/share/pacman/keyrings/*.gpg; do
+  [[ -e $keyring_path ]] || break
+  keyring_name=$(basename "$keyring_path" .gpg)
+  case ",${populate_names[*]}," in
+    *",$keyring_name,"*) continue ;;
+  esac
+  say "Importing staged keyring $keyring_name"
+  import_staged_keyring "$keyring_path"
+done
 
 say "Probing loop devices and the btrfs module"
 probe_img="$work_dir/probe.img"
-truncate -s 16M "$probe_img"
+truncate -s 128M "$probe_img"
 probe_mnt="$work_dir/probe-mnt"
 mkdir "$probe_mnt"
-if ! { modprobe btrfs 2>/dev/null || true; } &&
-  mkfs.btrfs -q "$probe_img" &&
+# modprobe is allowed to fail: kernels with CONFIG_BTRFS_FS=y (Docker
+# Desktop's linuxkit) have no module file but do support the filesystem.
+modprobe btrfs >/dev/null 2>&1 || true
+if mkfs.btrfs -q "$probe_img" &&
   mount -o loop "$probe_img" "$probe_mnt" 2>/dev/null &&
   umount "$probe_mnt"; then
   rm -f "$probe_img"
