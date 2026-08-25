@@ -1,28 +1,21 @@
 #!/bin/busybox sh
-# Live boot late hook: find the payload, overlay it writable, switch_root.
-# When the payload never shows up, write a full diagnostic report to the
-# stick's own ESP (readable from macOS) before dropping to a shell.
+# Live boot late hook, following the enumeration pattern proven by
+# omarchy-mac/omarchy-mac-iso on real hardware: settle + udevadm trigger,
+# payload by label/partlabel, separate overlay mounts, vendor firmware
+# carried across switch_root. On failure, a diagnostic report is persisted
+# to the internal System ESP.
 
-retrigger_usb() {
-    # A port that negotiated its Type-C role before the kernel took over may
-    # never start host mode (seen on t8112: the controller holding the stick
-    # stayed silent while the other one worked). Kicking every dwc3
-    # controller forces each port to renegotiate, so it does not matter
-    # which USB-C port the stick is plugged into.
-    for dev in /sys/bus/platform/drivers/dwc3-apple/*:*; do
-        [ -e "$dev" ] || continue
-        echo "${dev##*/}" > /sys/bus/platform/drivers/dwc3-apple/unbind 2>/dev/null
-    done
-    sleep 1
-    for dev in /sys/bus/platform/devices/*usb; do
-        [ -e "$dev" ] || continue
-        echo "${dev##*/}" > /sys/bus/platform/drivers/dwc3-apple/bind 2>/dev/null
-    done
+retrigger_udev() {
+    if command -v udevadm >/dev/null 2>&1; then
+        udevadm settle --timeout=10 2>/dev/null
+        udevadm trigger --action=add 2>/dev/null
+        udevadm settle --timeout=10 2>/dev/null
+    fi
 }
 
 force_host_roles() {
-    # Last-resort nudges: ask every Type-C port and every dwc3 controller to
-    # take the host role, in case automatic role switching stalled.
+    # Last-resort nudges: ask every Type-C port and dwc3 controller to take
+    # the host role, in case automatic role switching stalled.
     for role in /sys/bus/platform/devices/*.usb/*/role /sys/bus/platform/devices/*.usb/role; do
         [ -w "$role" ] && echo host >"$role" 2>/dev/null
     done
@@ -32,11 +25,27 @@ force_host_roles() {
     done
 }
 
+mount_system_esp() {
+    sys_esp_guid=$(tr -d '\0' < /proc/device-tree/chosen/asahi,efi-system-partition 2>/dev/null)
+    [ -n "$sys_esp_guid" ] || sys_esp_guid=$(tr -d '\0' < /proc/device-tree/asahi,efi-system-partition 2>/dev/null)
+    [ -n "$sys_esp_guid" ] && [ -e "/dev/disk/by-partuuid/$sys_esp_guid" ] || return 1
+    mkdir -p "$1"
+    mount -t vfat -o rw "/dev/disk/by-partuuid/$sys_esp_guid" "$1" 2>/dev/null
+}
+
+payload_device() {
+    if [ -e /dev/disk/by-partlabel/omarchy-mx-root ]; then
+        readlink -f /dev/disk/by-partlabel/omarchy-mx-root
+    elif [ -b /dev/sda2 ]; then
+        echo /dev/sda2
+    fi
+}
+
 write_report() {
-    report=/tmp/omarchy-live-report.txt
+    report=/tmp/omarchy-mx-mac-iso-report.txt
     stamp=$(date +%Y%m%d-%H%M)
     {
-        echo "=== omarchy-live diagnostic report ==="
+        echo "=== omarchy-mx-mac-iso diagnostic report ==="
         date
         echo; echo "--- /proc/cmdline"; cat /proc/cmdline
         echo; echo "--- /proc/modules"; cat /proc/modules
@@ -61,34 +70,29 @@ write_report() {
         dmesg | tail -n 120
     } >"$report" 2>&1
 
-    # Preferred target: the stick's own ESP — but when the stick is the thing
-    # that failed, it is as invisible as the payload, so fall through.
+    # Preferred: the stick's own ESP. When the stick itself is what failed,
+    # it is as invisible as the payload, so fall through to the internal one.
     if [ -e /dev/disk/by-partlabel/omarchy-mx-esp ]; then
         mkdir -p /run/esp
         if mount -t vfat -o rw /dev/disk/by-partlabel/omarchy-mx-esp /run/esp 2>/dev/null; then
             cp "$report" "/run/esp/omarchy-mx-mac-iso-report-$stamp.txt"
             umount /run/esp
-            echo "omarchy-live: report saved on the stick ESP (omarchy-mx-mac-iso-report-$stamp.txt)" >&2
+            echo "omarchy-live: report saved on the stick ESP" >&2
             return 0
         fi
     fi
 
     # The internal System ESP is always visible (NVMe works even when USB
     # does not). The asahi hook mounts and unmounts it early, so mount it
-    # ourselves: its PARTUUID is published in the device tree.
-    sys_esp_guid=$(tr -d '\0' < /proc/device-tree/chosen/asahi,efi-system-partition 2>/dev/null)
-    [ -n "$sys_esp_guid" ] || sys_esp_guid=$(tr -d '\0' < /proc/device-tree/asahi,efi-system-partition 2>/dev/null)
-    if [ -n "$sys_esp_guid" ] && [ -e "/dev/disk/by-partuuid/$sys_esp_guid" ]; then
-        mkdir -p /run/esp-rw
-        if mount -t vfat -o rw "/dev/disk/by-partuuid/$sys_esp_guid" /run/esp-rw 2>/dev/null; then
-            mkdir -p /run/esp-rw/omarchy-mx-mac-iso-reports 2>/dev/null
-            if cp "$report" "/run/esp-rw/omarchy-mx-mac-iso-reports/report-$stamp.txt" 2>/dev/null; then
-                umount /run/esp-rw
-                echo "omarchy-live: report saved to the internal ESP (omarchy-mx-mac-iso-reports/report-$stamp.txt)" >&2
-                return 0
-            fi
-            umount /run/esp-rw 2>/dev/null
+    # ourselves via the PARTUUID published in the device tree.
+    if mount_system_esp /run/esp-rw; then
+        mkdir -p /run/esp-rw/omarchy-mx-mac-iso-reports 2>/dev/null
+        if cp "$report" "/run/esp-rw/omarchy-mx-mac-iso-reports/report-$stamp.txt" 2>/dev/null; then
+            umount /run/esp-rw
+            echo "omarchy-live: report saved to the internal ESP (omarchy-mx-mac-iso-reports/report-$stamp.txt)" >&2
+            return 0
         fi
+        umount /run/esp-rw 2>/dev/null
     fi
 
     echo "omarchy-live: report could not be persisted; it is at $report in this shell" >&2
@@ -96,55 +100,98 @@ write_report() {
 }
 
 run_latehook() {
-    payload=/dev/disk/by-partlabel/omarchy-mx-root
+    live_mount=/run/omarchy-root
+    ovl_mount=/run/omarchy-ovl
+    new_root=/new_root
 
-    # Filesystem modules have no device modalias, so udev never loads them:
-    # request btrfs explicitly (xor and raid6_pq come along as dependencies).
+    # Filesystem modules have no device modalias, so udev never loads them.
     modprobe btrfs 2>/dev/null
+    modprobe overlay 2>/dev/null
 
-    # Wait for the stick, kicking the controllers while it stays invisible:
-    # hot-plug handles a slow port, rebind handles a port stuck before it
-    # ever started host mode.
+    # Enumeration pattern proven on hardware: settle, re-trigger every add
+    # event, settle again. A port whose Type-C role was negotiated before
+    # the kernel took over only starts host mode after this.
+    retrigger_udev
+    sleep 2
+
     tries=0
-    while [ ! -e "$payload" ] && [ "$tries" -lt 6 ]; do
+    while [ -z "$(payload_device)" ] && [ "$tries" -lt 6 ]; do
         if [ "$tries" -gt 0 ] && [ $((tries % 2)) -eq 1 ]; then
-            echo "omarchy-live: payload not found yet, kicking USB controllers"
-            retrigger_usb
+            echo "omarchy-live: payload not found yet, re-triggering udev" >&2
+            retrigger_udev
         fi
         sleep 5
         tries=$((tries + 1))
     done
 
     # Still nothing: force host roles everywhere and give it one more window.
-    if [ ! -e "$payload" ]; then
-        echo "omarchy-live: forcing host roles on every Type-C port"
+    if [ -z "$(payload_device)" ]; then
+        echo "omarchy-live: forcing host roles on every Type-C port" >&2
         force_host_roles
+        retrigger_udev
         sleep 6
     fi
 
-    if [ ! -e "$payload" ]; then
+    dev=$(payload_device)
+    if [ -z "$dev" ]; then
         echo "omarchy-live: payload partition omarchy-mx-root not found" >&2
         write_report
-        echo "omarchy-live: reboot to macOS and open omarchy-live-report.txt from the stick" >&2
+        echo "omarchy-live: reboot to macOS; the report is on the internal ESP" >&2
         exec sh
     fi
 
-    mkdir -p /new_root
-    if ! mount -o ro,subvol=@ "$payload" /new_root; then
-        echo "omarchy-live: mounting the payload failed" >&2
-        cat /proc/filesystems >&2
+    mkdir -p "$live_mount"
+    if ! mount -t btrfs -o ro,subvol=@ "$dev" "$live_mount"; then
+        echo "omarchy-live: mounting $dev subvol=@ failed" >&2
         write_report
         exec sh
     fi
 
-    # A tmpfs overlay makes the read-only payload behave like a writable
-    # system without ever writing to the stick itself.
-    mkdir -p /new_root/run/omarchy-live-upper /new_root/run/omarchy-live-work
+    # Payload and overlay live on separate mounts: the overlay lowerdir must
+    # not be the same mountpoint the overlay lands on.
+    mkdir -p "$ovl_mount" "$new_root"
+    mount -t tmpfs tmpfs "$ovl_mount"
+    mkdir -p "$ovl_mount/upper" "$ovl_mount/work"
     if ! mount -t overlay overlay \
-        -o lowerdir=/new_root,upperdir=/new_root/run/omarchy-live-upper,workdir=/new_root/run/omarchy-live-work \
-        /new_root; then
-        echo "omarchy-live: overlay setup failed; continuing read-only" >&2
+        -o "lowerdir=$live_mount,upperdir=$ovl_mount/upper,workdir=$ovl_mount/work" \
+        "$new_root"; then
+        echo "omarchy-live: overlay mount failed" >&2
+        write_report
+        exec sh
     fi
 
-    echo "omarchy-live: switching root"
+    # Carry the vendor firmware across switch_root: the asahi hook copied it
+    # to /new_root before the overlay covered that path.
+    if [ -d /lib/firmware/vendor ]; then
+        mkdir -p "$new_root/lib/firmware/vendor"
+        cp -a /lib/firmware/vendor/. "$new_root/lib/firmware/vendor/"
+    fi
+    if [ -d /vendorfw ]; then
+        mkdir -p "$new_root/vendorfw"
+        cp -a /vendorfw/. "$new_root/vendorfw/"
+    fi
+
+    mkdir -p "$new_root/proc" "$new_root/sys" "$new_root/dev" "$new_root/run"
+    mount --move /proc "$new_root/proc" 2>/dev/null || mount -t proc proc "$new_root/proc"
+    mount --move /sys "$new_root/sys" 2>/dev/null || mount -t sysfs sysfs "$new_root/sys"
+    mount --move /dev "$new_root/dev" 2>/dev/null || mount --bind /dev "$new_root/dev"
+    mount --move /run "$new_root/run" 2>/dev/null || true
+
+    # Progress marker: if this lands on the internal ESP but the boot still
+    # fails, USB was fine and the failure happened after the payload stage.
+    stamp=$(date +%Y%m%d-%H%M)
+    if mount_system_esp /run/esp-marker; then
+        mkdir -p /run/esp-marker/omarchy-mx-mac-iso-reports 2>/dev/null
+        echo "payload mounted, overlay ready, about to switch_root" \
+            >"/run/esp-marker/omarchy-mx-mac-iso-reports/reached-switch_root-$stamp.txt"
+        umount /run/esp-marker
+    fi
+
+    echo "omarchy-live: switching root" >&2
+    # shellcheck disable=SC2093  # the lines below only run if exec failed
+    exec switch_root "$new_root" /sbin/init
+
+    echo "omarchy-live: switch_root returned" >&2
+    write_report
+    exec sh
 }

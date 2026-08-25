@@ -103,12 +103,21 @@ for bind_dir in dev sys proc; do
 done
 
 say "Building the standalone GRUB EFI binary"
-grub_cfg_source="$repo_root/builder/live/grub.cfg"
+# The explicit module lists are load-bearing: without them the binary only
+# auto-loads what the memdisk pulls in, and search finds no filesystems
+# (proven on hardware by omarchy-mac).
 efi_dir="$work_dir/esp-content"
-mkdir -p "$efi_dir/EFI/BOOT"
+mkdir -p "$efi_dir/EFI/BOOT" "$efi_dir/grub"
 grub-mkstandalone -O arm64-efi \
+  --fonts="" --locales="" --themes="" \
+  --install-modules="linux fat ext2 btrfs part_gpt search search_label search_fs_uuid search_fs_file echo normal configfile gzio reboot sleep" \
+  --modules="part_gpt fat search search_fs_file configfile linux echo normal" \
   -o "$efi_dir/EFI/BOOT/BOOTAA64.EFI" \
-  "boot/grub/grub.cfg=$grub_cfg_source" >/dev/null
+  "boot/grub/grub.cfg=$repo_root/builder/live/grub-embed.cfg" >/dev/null
+# The real menu is a plain file on the ESP: cmdline experiments never
+# require a rebuild, just an edit from macOS.
+cp "$repo_root/builder/live/grub.cfg" "$efi_dir/grub/grub.cfg"
+: >"$efi_dir/omarchy-usb-live"
 cp "$kernel_image" "$efi_dir/vmlinuz-linux-asahi"
 cp "$work_dir/initramfs-linux-asahi.img" "$efi_dir/initramfs-linux-asahi.img"
 
