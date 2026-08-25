@@ -1,0 +1,31 @@
+# Live USB initramfs for Apple Silicon. Do not trust the packaged asahi
+# hook for Type-C USB — it still lists dwc3-of-simple, not dwc3_apple.
+# Module names use underscores, matching modules.dep exactly.
+
+MODULES=(
+  apple_tunable
+  phy_apple_atc
+  mux_apple_display_crossbar
+  typec
+  tps6598x_core
+  tps6598x
+  dwc3
+  dwc3_apple
+  xhci_plat_hcd
+  xhci_hcd
+  usb_storage
+  uas
+  loop
+  overlay
+  btrfs
+  nls_iso8859_1
+)
+
+BINARIES=(switch_root losetup)
+
+FILES=()
+
+HOOKS=(base asahi udev omarchy-live)
+
+COMPRESSION="zstd"
+COMPRESSION_OPTIONS=(-T0 -3)

@@ -1,10 +1,8 @@
 #!/bin/busybox sh
-# Live boot hook, running in the PREMOUNT phase (run_hook, not run_latehook):
-# mkinitcpio's init attempts to mount the (empty) root= device BEFORE the
-# late hooks, drops to an emergency shell on failure, and our late hook would
-# never execute. Everything — payload wait, overlay, switch_root — happens
-# here, following the enumeration pattern proven on Apple Silicon hardware
-# (settle + udevadm trigger). On failure, a diagnostic report is persisted
+# Live boot late hook, following the enumeration pattern proven by
+# omarchy-mac/omarchy-mac-iso on real hardware: settle + udevadm trigger,
+# payload by label/partlabel, separate overlay mounts, vendor firmware
+# carried across switch_root. On failure, a diagnostic report is persisted
 # to the internal System ESP.
 
 retrigger_udev() {
@@ -101,7 +99,7 @@ write_report() {
     return 1
 }
 
-run_hook() {
+run_latehook() {
     live_mount=/run/omarchy-root
     ovl_mount=/run/omarchy-ovl
     new_root=/new_root

@@ -26,11 +26,12 @@ build() {
 
 help() {
   cat <<HELPEOF
-omarchy-live: waits for the btrfs payload partition (PARTLABEL
-omarchy-mx-root), re-triggering udev so every Type-C controller gets a
-second chance to enumerate, mounts it read-only on subvol @, overlays a
-tmpfs, carries the vendor firmware across switch_root, and boots the live
-system. On failure a diagnostic report is persisted to the internal System
-ESP (omarchy-mx-mac-iso-reports/).
+omarchy-live: premount hook — waits for the btrfs payload partition
+(PARTLABEL omarchy-mx-root), re-triggering udev so every Type-C controller
+gets a second chance to enumerate, mounts it read-only on subvol @, overlays
+a tmpfs, carries the vendor firmware across switch_root, and boots the live
+system. Runs in the premount phase: the stock init would fail mounting the
+empty root= before late hooks ever run. On failure a diagnostic report is
+persisted to the internal System ESP (omarchy-mx-mac-iso-reports/).
 HELPEOF
 }
