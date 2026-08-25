@@ -29,7 +29,9 @@ force_host_roles() {
 
 mount_system_esp() {
     sys_esp_guid=$(tr -d '\0' < /proc/device-tree/chosen/asahi,efi-system-partition 2>/dev/null)
-    [ -n "$sys_esp_guid" ] || sys_esp_guid=$(tr -d '\0' < /proc/device-tree/asahi,efi-system-partition 2>/dev/null)
+    if [ -z "$sys_esp_guid" ]; then
+        sys_esp_guid=$(tr -d '\0' < /proc/device-tree/asahi,efi-system-partition 2>/dev/null)
+    fi
     [ -n "$sys_esp_guid" ] && [ -e "/dev/disk/by-partuuid/$sys_esp_guid" ] || return 1
     mkdir -p "$1"
     mount -t vfat -o rw "/dev/disk/by-partuuid/$sys_esp_guid" "$1" 2>/dev/null
@@ -45,7 +47,7 @@ payload_device() {
 
 write_report() {
     report=/tmp/omarchy-mx-mac-iso-report.txt
-    stamp=$(date +%Y%m%d-%H%M)
+    stamp=$(date +%Y%m%d-%H%M 2>/dev/null || cut -d. -f1 /proc/uptime)
     {
         echo "=== omarchy-mx-mac-iso diagnostic report ==="
         date
@@ -181,7 +183,7 @@ run_hook() {
 
     # Progress marker: if this lands on the internal ESP but the boot still
     # fails, USB was fine and the failure happened after the payload stage.
-    stamp=$(date +%Y%m%d-%H%M)
+    stamp=$(date +%Y%m%d-%H%M 2>/dev/null || cut -d. -f1 /proc/uptime)
     if mount_system_esp /run/esp-marker; then
         mkdir -p /run/esp-marker/omarchy-mx-mac-iso-reports 2>/dev/null
         echo "payload mounted, overlay ready, about to switch_root" \

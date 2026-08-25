@@ -21,6 +21,17 @@ build() {
   add_binary "switch_root"
   add_binary "losetup"
   add_binary "udevadm"
+  # The mkinitcpio busybox omits these applets; the hook needs them for the
+  # report (date), the System ESP lookup (tr), and its filters.
+  add_binary "date"
+  add_binary "tr"
+  add_binary "grep"
+  add_binary "awk"
+  add_binary "cut"
+  add_binary "head"
+  add_binary "sort"
+  add_binary "dmesg"
+  add_binary "readlink"
   add_runscript
 }
 
