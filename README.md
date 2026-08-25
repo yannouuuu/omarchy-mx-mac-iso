@@ -60,9 +60,8 @@ ever touched, and destructive paths require a clean `--dry-run` first. See
 
 ## Attribution
 
-Hardware findings and overall shape inherited from
-[`omarchy-mac/omarchy-mac-iso`](https://github.com/omarchy-mac/omarchy-mac-iso)
-(MIT). Package integrity comes from the signed asahi-quattro channel of
+See [`NOTICES`](NOTICES) for upstream attribution. Package integrity comes
+from the signed asahi-quattro channel of
 [`maralcbr/omarchy-pkgs`](https://github.com/maralcbr/omarchy-pkgs).
 
 ## License

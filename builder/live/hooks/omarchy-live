@@ -1,9 +1,8 @@
 #!/bin/busybox sh
-# Live boot late hook, following the enumeration pattern proven by
-# omarchy-mac/omarchy-mac-iso on real hardware: settle + udevadm trigger,
-# payload by label/partlabel, separate overlay mounts, vendor firmware
-# carried across switch_root. On failure, a diagnostic report is persisted
-# to the internal System ESP.
+# Live boot late hook, using the enumeration pattern proven on Apple Silicon
+# hardware: settle + udevadm trigger, payload by label/partlabel, separate
+# overlay mounts, vendor firmware carried across switch_root. On failure, a
+# diagnostic report is persisted to the internal System ESP.
 
 retrigger_udev() {
     if command -v udevadm >/dev/null 2>&1; then

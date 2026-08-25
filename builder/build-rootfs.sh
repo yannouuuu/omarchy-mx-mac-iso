@@ -96,7 +96,7 @@ say "Applying build-time provisioning"
 install -D -m 0644 "$configs_dir/pacman.conf" "$rootfs_dir/etc/pacman.conf"
 : >"$rootfs_dir/etc/machine-id"
 
-cat >"$rootfs_dir/etc/modprobe.d/omarchy-mac.conf" <<'EOF'
+cat >"$rootfs_dir/etc/modprobe.d/omarchy-mx-mac.conf" <<'EOF'
 options hid_apple fnmode=1
 options appledrm show_notch=1
 EOF

@@ -1,10 +1,9 @@
 # Plan: an Apple Silicon install image for Omarchy MX Mac
 
-> Adapted for Omarchy MX Mac from
-> `omarchy-mac/omarchy-mac-iso` `plans/apple-silicon-image.md`
-> (MIT License, Copyright (c) 2026 Omarchy Mac). Hardware findings from their
-> 2026-08-22 spike are inherited, not re-proven. Divergences from that plan
-> are stated deliberately in "Divergence from omarchy-mac" below.
+> Hardware findings below were inherited from a prior Apple Silicon spike
+> (M2 Max, 2026-08-22) and are not re-proven here; see [`NOTICES`](../NOTICES)
+> for upstream attribution. Divergences from the reference design are stated
+> deliberately in "Divergence from the reference design" below.
 
 ## Context
 
@@ -15,7 +14,7 @@ multiple minutes on the network). It works and it is signed end to end, but it
 is a long tail of steps where any failure lands the user in a half-built
 machine, and it needs working networking (`nmtui`) before anything starts.
 
-The shape proposed by omarchy-mac holds for us too: do Asahi's one-time
+The shape proposed for this class of installer holds for us too: do Asahi's one-time
 UEFI-only provision from macOS, then boot our own USB straight into a live
 installer that pulls firmware from the internal ESP and installs from a
 bundled offline root image. Target: macOS step unchanged (~6-8 min, dominated
@@ -24,12 +23,11 @@ of questions, one reboot, a few minutes**, fully offline, with encryption as a
 fresh `luksFormat` instead of an in-place migration.
 
 Upstream Omarchy's own plans state Apple Silicon (Asahi) is out of scope.
-omarchy-mac claims that lane for their fork; this repo claims it for ours.
+This repo claims that lane for the MX fork.
 
 ## What was verified on hardware (inherited, 2026-08-22, M2 Max)
 
-Spikes by omarchy-mac in `~/code/omarchy-mac-iso-spike/`. We treat these as
-established and do not repeat them:
+Findings from the prior hardware spike (M2 Max, 2026-08-22). We treat these as established and do not repeat them:
 
 | Claim | Consequence for us |
 |---|---|
@@ -118,7 +116,7 @@ Deliberately **not** an ISO9660 hybrid and **not** archiso. Asahi wants a
 FAT32 ESP with `BOOTAA64.EFI`. If a mount hook fights us, copy archiso's
 overlay hook approach, not mkarchiso.
 
-### Divergence from omarchy-mac, stated deliberately
+### Divergence from the reference design, stated deliberately
 
 Same idea, different package politics:
 
@@ -145,14 +143,13 @@ Optional apps offline can be a second artifact later.
 
 ### Rejected: live root inside the initramfs
 
-A multi-GB initramfs under GRUB/U-Boot was parked by omarchy-mac once USB in
-the initramfs worked; same call here. Unproven risks remain (contiguous EFI
+A multi-GB initramfs under GRUB/U-Boot was parked once USB in the initramfs worked; same call here. Unproven risks remain (contiguous EFI
 `AllocatePages`, unpack RAM on 8 GB machines) and we do not need them.
 
 ## Repo conventions
 
-A separate repo from `maralcbr/omarchy-mx-mac`, mirroring omarchy-mac's split:
-the main repo stays the desktop fork; this one owns image building. The name
+A separate repo from `maralcbr/omarchy-mx-mac`: the main repo stays the
+desktop fork; this one owns image building. The name
 keeps "iso" for discoverability even though the artifact is a `.img`.
 
 - `bin/omarchy-mx-mac-iso-make` — thin host script driving the container;
@@ -190,7 +187,7 @@ conditionals, atomic commits.
 
 ## Build time and size
 
-omarchy-mac measured, for ~950 packages on M2 Max: cold **~12-20 min**, warm
+Measured for ~950 packages on M2 Max: cold **~12-20 min**, warm
 **~7-11 min** (pacstrap dominates either way). Expect similar in a container
 on Apple Silicon. Alarm Minimal's `root.img` is ~2.06 GiB raw; a full desktop
 image looks like Alarm Desktop (12.7 GB raw, 1.88 GiB zipped). GitHub
@@ -239,7 +236,7 @@ Rails, cheapest first:
 ## Stages
 
 - **S0 — Repo hygiene**: done; this file is the first commit.
-- **S1 — Hardware spike**: inherited from omarchy-mac; re-confirm on one M1/M2
+- **S1 — Hardware spike**: inherited from the prior spike; re-confirm on one M1/M2
   machine when the first stick exists.
 - **S2 — Builder container**: `bin/omarchy-mx-mac-iso-make` running
   `docker --platform linux/arm64` from Arch Linux ARM with `[asahi-alarm]`;
@@ -277,7 +274,7 @@ Rails, cheapest first:
 
 ## Coordination
 
-Work lands in `maralcbr/omarchy-mx-mac-iso`, not as PRs into omarchy-mac.
+Work lands in `maralcbr/omarchy-mx-mac-iso`.
 `install-omarchy-mx-mac.sh` remains the supported install path for existing
 and new users while this image matures; nothing in this repo may break or
 shadow it. When the image is real, the README of the main repo gets a

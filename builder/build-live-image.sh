@@ -105,7 +105,7 @@ done
 say "Building the standalone GRUB EFI binary"
 # The explicit module lists are load-bearing: without them the binary only
 # auto-loads what the memdisk pulls in, and search finds no filesystems
-# (proven on hardware by omarchy-mac).
+# (proven on Apple Silicon hardware).
 efi_dir="$work_dir/esp-content"
 mkdir -p "$efi_dir/EFI/BOOT" "$efi_dir/grub"
 grub-mkstandalone -O arm64-efi \
